@@ -1,0 +1,63 @@
+{
+  "id": "ringforge",
+  "name": "RingForge",
+  "description": "Connect OpenClaw agents to a RingForge agent mesh fleet",
+  "version": "0.4.0",
+  "author": "Ben Ouattara",
+  "repository": "https://github.com/eshe-huli/ringforge-openclaw",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable RingForge mesh connection"
+      },
+      "server": {
+        "type": "string",
+        "description": "RingForge hub WebSocket URL (e.g. wss://ringforge.wejoona.com/ws/websocket)"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Fleet API key (rf_live_...)"
+      },
+      "fleetId": {
+        "type": "string",
+        "default": "default",
+        "description": "Fleet ID to join"
+      },
+      "agentName": {
+        "type": "string",
+        "description": "Agent display name in the mesh"
+      },
+      "capabilities": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Agent capabilities (e.g. ['code', 'research'])"
+      },
+      "autoReply": {
+        "type": "boolean",
+        "default": true,
+        "description": "Auto-send LLM replies to DM senders"
+      },
+      "cryptoMode": {
+        "type": "string",
+        "enum": ["none", "sign", "encrypt", "sign_encrypt"],
+        "default": "sign_encrypt",
+        "description": "Encryption mode for fleet messaging"
+      },
+      "contextRefreshMs": {
+        "type": "number",
+        "default": 300000,
+        "description": "Context refresh interval in milliseconds"
+      },
+      "maxContextChars": {
+        "type": "number",
+        "default": 4000,
+        "description": "Maximum characters for context injection"
+      }
+    },
+    "required": ["server", "apiKey"]
+  }
+}
