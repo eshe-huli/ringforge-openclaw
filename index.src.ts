@@ -1,5 +1,5 @@
 /**
- * Ringforge OpenClaw Plugin v0.4.0
+ * Ringforge OpenClaw Plugin v0.5.2
  *
  * Connects any OpenClaw agent to a Ringforge fleet:
  *
@@ -113,7 +113,7 @@ const ringforgePlugin = {
   id: "ringforge",
   name: "Ringforge",
   description: "Connect to a Ringforge agent mesh fleet",
-  version: "0.5.0",
+  version: "0.5.2",
 
   configSchema: {
     parse(value: unknown) {
@@ -162,6 +162,9 @@ const ringforgePlugin = {
 
     let lastModel: string | null = null;
     let pendingTaskExecution: { taskId: string; prompt: string; sessionId?: string; role?: string } | null = null;
+    let taskExecutionTimer: ReturnType<typeof setTimeout> | null = null;
+    let taskExecutionLock = false;
+    const queuedDmEvents: Array<{ from: any; message: any; eventText: string }> = [];
     
     // Gap 1: Parallel session tracking
     const activeSessions = new Map<string, { role: string; taskId: string; startedAt: number }>();
@@ -184,6 +187,14 @@ const ringforgePlugin = {
         if (injection === "silent") return;
 
         const eventText = formatDmEvent(from, message as Record<string, unknown>);
+
+        // Bug 6: Queue DMs while task is executing to avoid collision
+        if (taskExecutionLock) {
+          queuedDmEvents.push({ from, message, eventText });
+          api.logger.info(`Ringforge: queued DM (task executing), ${queuedDmEvents.length} queued`);
+          return;
+        }
+
         try {
           api.runtime.system.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
           dmHandler.trackIncoming(from, message, eventText);
@@ -215,6 +226,21 @@ const ringforgePlugin = {
 
         // Track this task for auto-reply via agent_end
         pendingTaskExecution = { taskId, prompt, sessionId, role };
+        taskExecutionLock = true;
+
+        // Bug 5: Start timeout timer — if agent_end doesn't fire within 90s, send error
+        if (taskExecutionTimer) clearTimeout(taskExecutionTimer);
+        taskExecutionTimer = setTimeout(() => {
+          if (pendingTaskExecution && pendingTaskExecution.taskId === taskId) {
+            api.logger.warn(`Ringforge: task ${taskId} timed out after 90s`);
+            client.sendTaskResult(taskId, {}, "execution_timeout");
+            pendingTaskExecution = null;
+            taskExecutionLock = false;
+            taskExecutionTimer = null;
+            // Drain queued DMs
+            drainQueuedDms();
+          }
+        }, 90_000);
 
         // Track active session for parallel execution
         if (sessionId) {
@@ -287,12 +313,32 @@ const ringforgePlugin = {
       return undefined;
     });
 
+    // Helper to drain queued DMs after task execution completes
+    function drainQueuedDms() {
+      while (queuedDmEvents.length > 0) {
+        const dm = queuedDmEvents.shift()!;
+        try {
+          api.runtime.system.enqueueSystemEvent(dm.eventText, { sessionKey: "agent:main:main" });
+          dmHandler.trackIncoming(dm.from, dm.message, dm.eventText);
+        } catch (err) {
+          api.logger.warn(`Ringforge: queued DM injection failed: ${err}`);
+        }
+      }
+    }
+
     // Auto-reply to DMs + task execution results
     api.on("agent_end", (event, _ctx) => {
-      // Handle pending task execution
+      // Bug 6: Handle pending task execution FIRST (priority over DM auto-reply)
       if (pendingTaskExecution) {
         const task = pendingTaskExecution;
         pendingTaskExecution = null;
+
+        // Bug 5: Clear timeout timer
+        if (taskExecutionTimer) {
+          clearTimeout(taskExecutionTimer);
+          taskExecutionTimer = null;
+        }
+
         try {
           const messages = event.messages || [];
           const lastAssistant = [...messages].reverse().find(
@@ -308,6 +354,8 @@ const ringforgePlugin = {
               role: task.role
             });
             api.logger.info(`Ringforge: sent task result for ${task.taskId} (session=${task.sessionId || "default"})`);
+          } else {
+            client.sendTaskResult(task.taskId, {}, "no_assistant_response");
           }
         } catch (err) {
           api.logger.warn(`Ringforge: task result error: ${err}`);
@@ -317,9 +365,14 @@ const ringforgePlugin = {
         if (task.sessionId) {
           activeSessions.delete(task.sessionId);
         }
+
+        // Release lock and drain queued DMs
+        taskExecutionLock = false;
+        drainQueuedDms();
+        return; // Don't process DM replies on the same agent_end cycle
       }
 
-      // Handle pending DM replies
+      // Handle pending DM replies (only if no task was pending)
       if (!dmHandler.hasPending()) return;
       try {
         if (dmHandler.handleAgentEnd(event.messages || [])) {
