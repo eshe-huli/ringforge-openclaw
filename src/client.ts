@@ -66,6 +66,8 @@ export type RingforgeEventHandler = {
   onRoster?: (agents: RingforgeAgent[]) => void;
   onCryptoKeyReceived?: (kid: string) => void;
   onCryptoKeyRotated?: (kid: string) => void;
+  onTaskExecute?: (payload: Record<string, unknown>) => void;
+  onOrchestrationStateChanged?: (payload: Record<string, unknown>) => void;
 };
 
 type PendingReply = {
@@ -330,6 +332,14 @@ export class RingforgeClient {
         this.handlers.onActivity?.(p);
         break;
 
+      case "task:execute":
+        this.handlers.onTaskExecute?.(p);
+        break;
+
+      case "orchestration:state_changed":
+        this.handlers.onOrchestrationStateChanged?.(p);
+        break;
+
       // role:assigned, context:*, notifications — let them pass silently
       default:
         break;
@@ -441,6 +451,17 @@ export class RingforgeClient {
     if (update.model) payload.model = update.model;
     if (update.load !== undefined) payload.load = update.load;
     this.pushChannel("presence:update", { payload });
+  }
+
+  /** Send a task result back to the hub. */
+  sendTaskResult(taskId: string, result: Record<string, unknown>, error?: string): void {
+    const payload: Record<string, unknown> = { task_id: taskId };
+    if (error) {
+      payload.error = error;
+    } else {
+      payload.result = result;
+    }
+    this.pushChannel("task:result", { payload });
   }
 
   /** Request a fresh roster push. */

@@ -161,6 +161,7 @@ const ringforgePlugin = {
     // ── Instantiate subsystems ──
 
     let lastModel: string | null = null;
+    let pendingTaskExecution: { taskId: string; prompt: string } | null = null;
 
     const client = new RingforgeClient(config, {
       onConnected: (agentId) => {
@@ -197,6 +198,31 @@ const ringforgePlugin = {
       onActivity: (a) => api.logger.info(`Ringforge: [${a.kind}] ${a.description}`),
       onCryptoKeyReceived: (kid) => api.logger.info(`Ringforge: crypto key received (${kid})`),
       onCryptoKeyRotated: (kid) => api.logger.info(`Ringforge: crypto key rotated (${kid})`),
+      onTaskExecute: (payload) => {
+        const p = (payload as Record<string, unknown>)?.payload as Record<string, unknown> || payload;
+        const taskId = p?.task_id as string;
+        const prompt = p?.prompt as string;
+        if (!taskId || !prompt) {
+          api.logger.warn("Ringforge: task:execute missing task_id or prompt");
+          return;
+        }
+        api.logger.info(`Ringforge: task:execute ${taskId}: ${prompt.slice(0, 80)}`);
+
+        // Track this task for auto-reply via agent_end
+        pendingTaskExecution = { taskId, prompt };
+
+        // Inject as system event
+        const eventText = `[Ringforge Task ${taskId}] ${prompt}`;
+        try {
+          api.runtime.system.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
+        } catch (err) {
+          api.logger.warn(`Ringforge: task injection failed: ${err}`);
+          client.sendTaskResult(taskId, {}, String(err));
+        }
+      },
+      onOrchestrationStateChanged: (payload) => {
+        api.logger.info(`Ringforge: orchestration state changed: ${JSON.stringify(payload).slice(0, 200)}`);
+      },
     });
 
     const dmHandler = new DmHandler(client, { autoReply });
@@ -234,8 +260,31 @@ const ringforgePlugin = {
       return undefined;
     });
 
-    // Auto-reply to DMs
+    // Auto-reply to DMs + task execution results
     api.on("agent_end", (event, _ctx) => {
+      // Handle pending task execution
+      if (pendingTaskExecution) {
+        const task = pendingTaskExecution;
+        pendingTaskExecution = null;
+        try {
+          const messages = event.messages || [];
+          const lastAssistant = [...messages].reverse().find(
+            (m: any) => m.role === "assistant" && m.content,
+          );
+          if (lastAssistant) {
+            const content = typeof lastAssistant.content === "string"
+              ? lastAssistant.content
+              : JSON.stringify(lastAssistant.content);
+            client.sendTaskResult(task.taskId, { response: content.slice(0, 10000) });
+            api.logger.info(`Ringforge: sent task result for ${task.taskId}`);
+          }
+        } catch (err) {
+          api.logger.warn(`Ringforge: task result error: ${err}`);
+          client.sendTaskResult(task.taskId, {}, String(err));
+        }
+      }
+
+      // Handle pending DM replies
       if (!dmHandler.hasPending()) return;
       try {
         if (dmHandler.handleAgentEnd(event.messages || [])) {

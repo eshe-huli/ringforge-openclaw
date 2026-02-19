@@ -343,6 +343,44 @@ export function createRingforgeTools(client: RingforgeClient, ctxMgr?: ContextMa
         }
       },
     },
+    // ── Orchestrate ──
+    {
+      name: "ringforge_orchestrate",
+      label: "Ringforge Orchestrate",
+      description:
+        "Submit a hierarchical task that gets decomposed and distributed across agents.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          prompt: { type: "string", description: "The complex task to orchestrate" },
+          verify: { type: "boolean", description: "Enable verification loop" },
+          max_retries: { type: "number", description: "Max verification retries" },
+          budget_tokens: { type: "number", description: "Token budget limit" },
+        },
+        required: ["prompt"],
+      },
+      execute: async (
+        _id: string,
+        params: { prompt: string; verify?: boolean; max_retries?: number; budget_tokens?: number },
+      ): Promise<ToolResult> => {
+        if (!client.isConnected) return notConnected();
+        try {
+          const reply = await client.pushChannelAsync("orchestration:submit", {
+            payload: {
+              request: { prompt: params.prompt, type: "orchestrated" },
+              verify: params.verify,
+              max_retries: params.max_retries,
+              budget_tokens: params.budget_tokens,
+            },
+          });
+          return text(`Orchestration submitted: ${JSON.stringify(reply).slice(0, 500)}`);
+        } catch (err) {
+          return text(
+            `Orchestration failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    },
   ];
 }
 
