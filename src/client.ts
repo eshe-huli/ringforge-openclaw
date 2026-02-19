@@ -11,8 +11,9 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const WebSocket: any = (() => {
   try {
-    // Pre-compiled bridge (not transpiled by jiti, uses globalThis.WebSocket)
-    return require("./ws-bridge.js");
+    // Pre-compiled bridge (wraps ws with Node-style .on() API)
+    const mod = require("./ws-bridge.js");
+    return mod.default || mod.BridgeWebSocket || mod;
   } catch {
     // Fallback: ws package (Node.js)
     return require("ws");

@@ -1,19 +1,27 @@
 "use strict";
-class BridgeWebSocket {
-  constructor(url) {
-    this._ws = new globalThis.WebSocket(url);
-  }
-  get readyState() { return this._ws.readyState; }
-  send(data) { this._ws.send(data); }
-  close() { this._ws.close(); }
-  on(event, fn) {
-    if (event === "open") this._ws.addEventListener("open", () => fn());
-    else if (event === "message") this._ws.addEventListener("message", (ev) => fn(ev.data));
-    else if (event === "close") this._ws.addEventListener("close", (ev) => fn(ev.code, ev.reason));
-    else if (event === "error") this._ws.addEventListener("error", () => fn());
-  }
+var WebSocket = require("ws");
+
+function BridgeWebSocket(url) {
+  var ws = new WebSocket(url);
+  this._ws = ws;
+  this.readyState = ws.readyState;
+  
+  var self = this;
+  ws.on("open", function() { self.readyState = ws.readyState; });
+  ws.on("close", function() { self.readyState = ws.readyState; });
 }
+
+BridgeWebSocket.prototype.send = function(data) { this._ws.send(data); };
+BridgeWebSocket.prototype.close = function() { this._ws.close(); };
+BridgeWebSocket.prototype.on = function(event, fn) { this._ws.on(event, fn); };
+Object.defineProperty(BridgeWebSocket.prototype, "readyState", {
+  get: function() { return this._ws ? this._ws.readyState : 3; },
+  set: function() {}
+});
+
 BridgeWebSocket.OPEN = 1;
 BridgeWebSocket.CLOSED = 3;
-module.exports = BridgeWebSocket;
-module.exports.default = BridgeWebSocket;
+
+// Export for both CJS and ESM bundler compatibility
+exports.default = BridgeWebSocket;
+exports.BridgeWebSocket = BridgeWebSocket;

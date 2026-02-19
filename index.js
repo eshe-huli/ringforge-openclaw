@@ -1,41 +1,74 @@
-// @bun
-var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __require = import.meta.require;
+"use strict";
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/ws-bridge.js
-var require_ws_bridge = __commonJS((exports, module) => {
-  class BridgeWebSocket {
-    constructor(url) {
-      this._ws = new globalThis.WebSocket(url);
+var require_ws_bridge = __commonJS({
+  "src/ws-bridge.js"(exports2) {
+    "use strict";
+    var WebSocket2 = require("ws");
+    function BridgeWebSocket(url) {
+      var ws = new WebSocket2(url);
+      this._ws = ws;
+      this.readyState = ws.readyState;
+      var self = this;
+      ws.on("open", function() {
+        self.readyState = ws.readyState;
+      });
+      ws.on("close", function() {
+        self.readyState = ws.readyState;
+      });
     }
-    get readyState() {
-      return this._ws.readyState;
-    }
-    send(data) {
+    BridgeWebSocket.prototype.send = function(data) {
       this._ws.send(data);
-    }
-    close() {
+    };
+    BridgeWebSocket.prototype.close = function() {
       this._ws.close();
-    }
-    on(event, fn) {
-      if (event === "open")
-        this._ws.addEventListener("open", () => fn());
-      else if (event === "message")
-        this._ws.addEventListener("message", (ev) => fn(ev.data));
-      else if (event === "close")
-        this._ws.addEventListener("close", (ev) => fn(ev.code, ev.reason));
-      else if (event === "error")
-        this._ws.addEventListener("error", () => fn());
-    }
+    };
+    BridgeWebSocket.prototype.on = function(event, fn) {
+      this._ws.on(event, fn);
+    };
+    Object.defineProperty(BridgeWebSocket.prototype, "readyState", {
+      get: function() {
+        return this._ws ? this._ws.readyState : 3;
+      },
+      set: function() {
+      }
+    });
+    BridgeWebSocket.OPEN = 1;
+    BridgeWebSocket.CLOSED = 3;
+    exports2.default = BridgeWebSocket;
+    exports2.BridgeWebSocket = BridgeWebSocket;
   }
-  BridgeWebSocket.OPEN = 1;
-  BridgeWebSocket.CLOSED = 3;
-  module.exports = BridgeWebSocket;
-  module.exports.default = BridgeWebSocket;
 });
 
+// index.src.ts
+var index_src_exports = {};
+__export(index_src_exports, {
+  default: () => index_src_default
+});
+module.exports = __toCommonJS(index_src_exports);
+
 // src/crypto.ts
-import { createHmac, randomBytes, createCipheriv, createDecipheriv } from "crypto";
+var import_node_crypto = require("node:crypto");
 function base64UrlEncode(data) {
   const buf = typeof data === "string" ? Buffer.from(data) : Buffer.from(data);
   return buf.toString("base64url");
@@ -45,41 +78,39 @@ function base64UrlDecode(str) {
 }
 function jwsSign(payload, secret, kid = "fleet_key") {
   const header = { alg: "HS256", kid, typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(Date.now() / 1e3);
   const claims = {
     payload,
     iat: now,
     nbf: now - 5,
     exp: now + 300
+    // 5 min
   };
   const headerB64 = base64UrlEncode(JSON.stringify(header));
   const claimsB64 = base64UrlEncode(JSON.stringify(claims));
   const signingInput = `${headerB64}.${claimsB64}`;
-  const signature = createHmac("sha256", secret).update(signingInput).digest();
+  const signature = (0, import_node_crypto.createHmac)("sha256", secret).update(signingInput).digest();
   const sigB64 = base64UrlEncode(signature);
   return `${headerB64}.${claimsB64}.${sigB64}`;
 }
 function jwsVerify(compact, secret, opts = {}) {
   const checkExp = opts.checkExp !== false;
   const parts = compact.split(".");
-  if (parts.length !== 3)
-    return { ok: false, error: "invalid_format" };
+  if (parts.length !== 3) return { ok: false, error: "invalid_format" };
   const [headerB64, claimsB64, sigB64] = parts;
   const signingInput = `${headerB64}.${claimsB64}`;
-  const expected = createHmac("sha256", secret).update(signingInput).digest();
+  const expected = (0, import_node_crypto.createHmac)("sha256", secret).update(signingInput).digest();
   const actual = base64UrlDecode(sigB64);
-  if (!expected.equals(actual))
-    return { ok: false, error: "invalid_signature" };
+  if (!expected.equals(actual)) return { ok: false, error: "invalid_signature" };
   try {
     const header = JSON.parse(base64UrlDecode(headerB64).toString());
-    if (header.alg !== "HS256")
-      return { ok: false, error: "unsupported_alg" };
+    if (header.alg !== "HS256") return { ok: false, error: "unsupported_alg" };
   } catch {
     return { ok: false, error: "invalid_header" };
   }
   try {
     const claims = JSON.parse(base64UrlDecode(claimsB64).toString());
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(Date.now() / 1e3);
     if (checkExp && typeof claims.exp === "number" && now > claims.exp) {
       return { ok: false, error: "expired" };
     }
@@ -94,14 +125,14 @@ function jwsVerify(compact, secret, opts = {}) {
 function jweEncrypt(payload, secret, kid = "fleet_key") {
   const header = { alg: "dir", enc: "A256GCM", kid, typ: "JWT" };
   const headerB64 = base64UrlEncode(JSON.stringify(header));
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(Date.now() / 1e3);
   const plaintext = JSON.stringify({
     payload,
     iat: now,
     exp: now + 300
   });
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", secret, iv);
+  const iv = (0, import_node_crypto.randomBytes)(12);
+  const cipher = (0, import_node_crypto.createCipheriv)("aes-256-gcm", secret, iv);
   cipher.setAAD(Buffer.from(headerB64, "ascii"));
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -110,8 +141,7 @@ function jweEncrypt(payload, secret, kid = "fleet_key") {
 function jweDecrypt(compact, secret, opts = {}) {
   const checkExp = opts.checkExp !== false;
   const parts = compact.split(".");
-  if (parts.length !== 5)
-    return { ok: false, error: "invalid_format" };
+  if (parts.length !== 5) return { ok: false, error: "invalid_format" };
   const [headerB64, _encKeyB64, ivB64, ciphertextB64, tagB64] = parts;
   try {
     const header = JSON.parse(base64UrlDecode(headerB64).toString());
@@ -125,12 +155,14 @@ function jweDecrypt(compact, secret, opts = {}) {
     const iv = base64UrlDecode(ivB64);
     const ciphertext = base64UrlDecode(ciphertextB64);
     const tag = base64UrlDecode(tagB64);
-    const decipher = createDecipheriv("aes-256-gcm", secret, iv);
+    const decipher = (0, import_node_crypto.createDecipheriv)("aes-256-gcm", secret, iv);
     decipher.setAAD(Buffer.from(headerB64, "ascii"));
     decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString(
+      "utf8"
+    );
     const claims = JSON.parse(plaintext);
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(Date.now() / 1e3);
     if (checkExp && typeof claims.exp === "number" && now > claims.exp) {
       return { ok: false, error: "expired" };
     }
@@ -174,22 +206,17 @@ function unprotect(envelope, secret) {
     case "none":
       return envelope.message ? { ok: true, payload: envelope.message } : { ok: false, error: "no_message" };
     case "sign":
-      if (!envelope.jws)
-        return { ok: false, error: "missing_jws" };
+      if (!envelope.jws) return { ok: false, error: "missing_jws" };
       return jwsVerify(envelope.jws, secret);
     case "encrypt":
-      if (!envelope.jwe)
-        return { ok: false, error: "missing_jwe" };
+      if (!envelope.jwe) return { ok: false, error: "missing_jwe" };
       return jweDecrypt(envelope.jwe, secret);
     case "sign_encrypt": {
-      if (!envelope.jwe)
-        return { ok: false, error: "missing_jwe" };
+      if (!envelope.jwe) return { ok: false, error: "missing_jwe" };
       const decrypted = jweDecrypt(envelope.jwe, secret);
-      if (!decrypted.ok)
-        return decrypted;
+      if (!decrypted.ok) return decrypted;
       const inner = decrypted.payload;
-      if (!inner.jws)
-        return { ok: false, error: "missing_inner_jws" };
+      if (!inner.jws) return { ok: false, error: "missing_inner_jws" };
       return jwsVerify(inner.jws, secret);
     }
     default:
@@ -203,32 +230,31 @@ function decodeSecret(encoded) {
 // src/client.ts
 var WebSocket = (() => {
   try {
-    return require_ws_bridge();
+    const mod = require_ws_bridge();
+    return mod.default || mod.BridgeWebSocket || mod;
   } catch {
-    return __require("ws");
+    return require("ws");
   }
 })();
-
-class RingforgeClient {
-  ws = null;
-  config;
-  handlers;
-  refCounter = 0;
-  joinRef = null;
-  fleetTopic = null;
-  heartbeatInterval = null;
-  reconnectTimeout = null;
-  reconnectAttempts = 0;
-  stopped = false;
-  agentId = null;
-  connectedAt = null;
-  pendingReplies = new Map;
-  fleetKey = null;
-  fleetKeyKid = "fleet_key";
+var RingforgeClient = class {
   constructor(config, handlers = {}) {
+    this.ws = null;
+    this.refCounter = 0;
+    this.joinRef = null;
+    this.fleetTopic = null;
+    this.heartbeatInterval = null;
+    this.reconnectTimeout = null;
+    this.reconnectAttempts = 0;
+    this.stopped = false;
+    this.agentId = null;
+    this.connectedAt = null;
+    this.pendingReplies = /* @__PURE__ */ new Map();
+    this.fleetKey = null;
+    this.fleetKeyKid = "fleet_key";
     this.config = config;
     this.handlers = handlers;
   }
+  // ── Wire helpers ──────────────────────────────────────────
   makeRef() {
     return String(++this.refCounter);
   }
@@ -244,6 +270,10 @@ class RingforgeClient {
     }
     return ref;
   }
+  /**
+   * Push a channel event and await the phx_reply.
+   * Rejects on error or timeout.
+   */
   pushChannelAsync(event, payload = {}, timeoutMs = 1e4) {
     return new Promise((resolve, reject) => {
       if (!this.isConnected) {
@@ -258,6 +288,7 @@ class RingforgeClient {
       this.pendingReplies.set(ref, { resolve, reject, timer });
     });
   }
+  // ── Connection lifecycle ──────────────────────────────────
   connect() {
     this.stopped = false;
     this.fleetKey = null;
@@ -276,7 +307,7 @@ class RingforgeClient {
       this.reconnectAttempts = 0;
       this.heartbeatInterval = setInterval(() => {
         this.send([null, this.makeRef(), "phoenix", "heartbeat", {}]);
-      }, 30000);
+      }, 3e4);
       this.joinFleet();
     });
     this.ws.on("message", (data) => {
@@ -284,14 +315,16 @@ class RingforgeClient {
         const msg = JSON.parse(data.toString());
         const [_jRef, ref, _topic, event, payload] = msg;
         this.handleMessage(event, payload, ref);
-      } catch {}
+      } catch {
+      }
     });
     this.ws.on("close", (_code, reason) => {
       this.cleanup();
       this.handlers.onDisconnected?.(reason?.toString() || "closed");
       this.scheduleReconnect();
     });
-    this.ws.on("error", () => {});
+    this.ws.on("error", () => {
+    });
   }
   disconnect() {
     this.stopped = true;
@@ -299,7 +332,8 @@ class RingforgeClient {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch {}
+      } catch {
+      }
       this.ws = null;
     }
   }
@@ -315,14 +349,13 @@ class RingforgeClient {
     }
   }
   scheduleReconnect() {
-    if (this.stopped)
-      return;
-    if (this.reconnectTimeout)
-      clearTimeout(this.reconnectTimeout);
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    if (this.stopped) return;
+    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+    const delay = Math.min(1e3 * Math.pow(2, this.reconnectAttempts), 3e4);
     this.reconnectAttempts++;
     this.reconnectTimeout = setTimeout(() => this.connect(), delay);
   }
+  // ── Fleet join + crypto key ───────────────────────────────
   joinFleet() {
     this.fleetTopic = `fleet:${this.config.fleetId}`;
     this.joinRef = this.makeRef();
@@ -343,9 +376,8 @@ class RingforgeClient {
     this.fetchCryptoKey();
   }
   fetchCryptoKey() {
-    if (!this.fleetTopic)
-      return;
-    this.pushChannelAsync("crypto:key", {}, 8000).then((response) => {
+    if (!this.fleetTopic) return;
+    this.pushChannelAsync("crypto:key", {}, 8e3).then((response) => {
       const p = response?.payload;
       const encodedKey = p?.key || response?.key;
       const kid = p?.kid || "fleet_key";
@@ -358,6 +390,7 @@ class RingforgeClient {
       this.fleetKey = null;
     });
   }
+  // ── Message dispatch ──────────────────────────────────────
   handleMessage(event, payload, ref) {
     const p = payload?.payload || payload;
     switch (event) {
@@ -398,6 +431,13 @@ class RingforgeClient {
       case "activity:broadcast":
         this.handlers.onActivity?.(p);
         break;
+      case "task:execute":
+        this.handlers.onTaskExecute?.(p);
+        break;
+      case "orchestration:state_changed":
+        this.handlers.onOrchestrationStateChanged?.(p);
+        break;
+      // role:assigned, context:*, notifications — let them pass silently
       default:
         break;
     }
@@ -411,7 +451,9 @@ class RingforgeClient {
       if (status2 === "ok") {
         pending.resolve(payload?.response || {});
       } else {
-        pending.reject(new Error(`Reply error: ${JSON.stringify(payload?.response || payload).slice(0, 200)}`));
+        pending.reject(
+          new Error(`Reply error: ${JSON.stringify(payload?.response || payload).slice(0, 200)}`)
+        );
       }
       return;
     }
@@ -440,20 +482,29 @@ class RingforgeClient {
         if (result.ok) {
           message = result.payload;
         }
-      } catch {}
+      } catch {
+      }
     }
     if (message && from) {
       this.handlers.onDirectMessage?.(from, message);
     }
   }
+  // ── Public API ────────────────────────────────────────────
+  /** Send a DM (encrypted if fleet key available). */
   sendDM(toAgentId, message) {
     const cryptoMode = this.config.cryptoMode || "sign_encrypt";
     if (cryptoMode !== "none" && this.fleetKey) {
-      const envelope = protect(message, this.fleetKey, cryptoMode, this.fleetKeyKid);
+      const envelope = protect(
+        message,
+        this.fleetKey,
+        cryptoMode,
+        this.fleetKeyKid
+      );
       this.pushChannel("direct:send", {
         payload: {
           to: toAgentId,
           message,
+          // Plaintext for server-side storage
           jws: envelope.jws,
           jwe: envelope.jwe,
           crypto: envelope.crypto
@@ -465,35 +516,48 @@ class RingforgeClient {
       });
     }
   }
-  sendText(toAgentId, text) {
-    this.sendDM(toAgentId, { type: "text", text });
+  /** Send a plain text DM. */
+  sendText(toAgentId, text2) {
+    this.sendDM(toAgentId, { type: "text", text: text2 });
   }
+  /** Broadcast an activity event. */
   broadcastActivity(kind, description, tags = []) {
     this.pushChannel("activity:broadcast", {
       payload: { kind, description, tags }
     });
   }
+  /** Update presence state/task/model. */
   updatePresence(update) {
     const payload = {};
-    if (update.state)
-      payload.state = update.state;
-    if (update.task !== undefined)
-      payload.task = update.task;
-    if (update.model)
-      payload.model = update.model;
-    if (update.load !== undefined)
-      payload.load = update.load;
+    if (update.state) payload.state = update.state;
+    if (update.task !== void 0) payload.task = update.task;
+    if (update.model) payload.model = update.model;
+    if (update.load !== void 0) payload.load = update.load;
     this.pushChannel("presence:update", { payload });
   }
+  /** Send a task result back to the hub. */
+  sendTaskResult(taskId, result, error) {
+    const payload = { task_id: taskId };
+    if (error) {
+      payload.error = error;
+    } else {
+      payload.result = result;
+    }
+    this.pushChannel("task:result", { payload });
+  }
+  /** Request a fresh roster push. */
   requestRoster() {
     this.pushChannel("presence:roster", {});
   }
+  /** Set a fleet memory key. */
   setMemory(key, value) {
     this.pushChannel("memory:set", { payload: { key, value } });
   }
+  /** Get a fleet memory key (async). */
   async getMemoryAsync(key) {
     return this.pushChannelAsync("memory:get", { payload: { key } });
   }
+  // ── Accessors ─────────────────────────────────────────────
   get isConnected() {
     return this.ws?.readyState === WebSocket.OPEN && this.fleetTopic !== null;
   }
@@ -509,27 +573,25 @@ class RingforgeClient {
   get currentFleetId() {
     return this.config.fleetId;
   }
-}
+};
 
 // src/context-manager.ts
 var DEFAULT_CONFIG = {
-  refreshIntervalMs: 5 * 60 * 1000,
+  refreshIntervalMs: 5 * 60 * 1e3,
   injectContext: true,
-  maxContextChars: 4000,
+  maxContextChars: 4e3,
   include: "all"
 };
-
-class ContextManager {
-  client;
-  config;
-  context = null;
-  refreshTimer = null;
-  lastRefreshAt = 0;
-  fetchInProgress = false;
+var ContextManager = class {
   constructor(client, config) {
+    this.context = null;
+    this.refreshTimer = null;
+    this.lastRefreshAt = 0;
+    this.fetchInProgress = false;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.client = client;
   }
+  /** Start periodic context refresh. */
   async start() {
     await this.refreshWithRetry(2);
     if (this.config.refreshIntervalMs > 0) {
@@ -544,63 +606,65 @@ class ContextManager {
     this.context = null;
     this.fetchInProgress = false;
   }
+  /** Fetch fresh context from the hub. */
   async refresh() {
-    if (!this.client.isConnected || this.fetchInProgress)
-      return;
+    if (!this.client.isConnected || this.fetchInProgress) return;
     this.fetchInProgress = true;
     try {
-      const response = await this.client.pushChannelAsync("context:sync", { payload: { include: this.config.include } }, 15000);
+      const response = await this.client.pushChannelAsync(
+        "context:sync",
+        { payload: { include: this.config.include } },
+        15e3
+      );
       const ctx = response?.context || response?.payload?.context || response;
       if (ctx && typeof ctx === "object") {
         this.context = ctx;
         this.lastRefreshAt = Date.now();
       }
-    } catch {} finally {
+    } catch {
+    } finally {
       this.fetchInProgress = false;
     }
   }
+  /** Refresh with retries. */
   async refreshWithRetry(retries) {
-    for (let i = 0;i <= retries; i++) {
+    for (let i = 0; i <= retries; i++) {
       await this.refresh();
-      if (this.context)
-        return;
-      if (i < retries)
-        await new Promise((r) => setTimeout(r, 2000));
+      if (this.context) return;
+      if (i < retries) await new Promise((r) => setTimeout(r, 2e3));
     }
   }
   getContext() {
     return this.context;
   }
   isStale() {
-    if (!this.context)
-      return true;
+    if (!this.context) return true;
     return Date.now() - this.lastRefreshAt > this.config.refreshIntervalMs * 2;
   }
+  /**
+   * Build the context string for injection into the LLM prompt.
+   * Called from the before_agent_start hook.
+   */
   buildPromptContext() {
-    if (!this.config.injectContext || !this.context)
-      return null;
+    if (!this.config.injectContext || !this.context) return null;
     const parts = ["\u2550\u2550\u2550 RINGFORGE CONTEXT \u2550\u2550\u2550"];
     const a = this.context.agent;
     if (a) {
-      parts.push(`
-\u2500\u2500 YOUR STATUS \u2500\u2500`);
+      parts.push("\n\u2500\u2500 YOUR STATUS \u2500\u2500");
       parts.push(`Agent: ${a.name} (${a.agent_id})`);
       if (a.role) {
         const rname = a.role.name || a.role.slug || "assigned";
         parts.push(`Role: ${rname}`);
       }
-      if (a.squad_id)
-        parts.push(`Squad: ${a.squad_id}`);
-      if (a.capabilities?.length)
-        parts.push(`Capabilities: ${a.capabilities.join(", ")}`);
+      if (a.squad_id) parts.push(`Squad: ${a.squad_id}`);
+      if (a.capabilities?.length) parts.push(`Capabilities: ${a.capabilities.join(", ")}`);
       const t = a.tasks;
       if (t.count > 0) {
         parts.push(`
 Tasks: ${t.count} total, ${t.in_progress} in progress`);
         if (t.next) {
           parts.push(`\u25B6 NEXT: [${t.next.task_id}] ${t.next.title} (${t.next.priority})`);
-          if (t.next.description)
-            parts.push(`  ${t.next.description.slice(0, 200)}`);
+          if (t.next.description) parts.push(`  ${t.next.description.slice(0, 200)}`);
         }
         const active = t.queue.filter((tk) => tk.lane === "in_progress");
         if (active.length > 0) {
@@ -608,8 +672,7 @@ Tasks: ${t.count} total, ${t.in_progress} in progress`);
           for (const tk of active.slice(0, 5)) {
             const pct = tk.progress ? ` (${tk.progress}%)` : "";
             parts.push(`  \u2022 [${tk.task_id}] ${tk.title} \u2014 ${tk.priority}${pct}`);
-            if (tk.context_refs?.length)
-              parts.push(`    refs: ${tk.context_refs.join(", ")}`);
+            if (tk.context_refs?.length) parts.push(`    refs: ${tk.context_refs.join(", ")}`);
           }
         }
         const ready = t.queue.filter((tk) => tk.lane === "ready");
@@ -628,11 +691,9 @@ Tasks: ${t.count} total, ${t.in_progress} in progress`);
           }
         }
       } else {
-        parts.push(`
-No tasks assigned. Check squad/fleet boards or ask for work.`);
+        parts.push("\nNo tasks assigned. Check squad/fleet boards or ask for work.");
       }
-      if (a.instructions)
-        parts.push(`
+      if (a.instructions) parts.push(`
 ${a.instructions}`);
     }
     const s = this.context.squad;
@@ -640,7 +701,9 @@ ${a.instructions}`);
       parts.push(`
 \u2500\u2500 SQUAD: ${s.squad_id} \u2500\u2500`);
       const st = s.stats;
-      parts.push(`Tasks: ${st.total_tasks} total | ${st.in_progress} active | ${st.blocked} blocked | ${st.review} review`);
+      parts.push(
+        `Tasks: ${st.total_tasks} total | ${st.in_progress} active | ${st.blocked} blocked | ${st.review} review`
+      );
       if (st.blocked > 0) {
         const blockedTasks = Object.values(s.board || {}).flatMap((lane) => lane.tasks || []).filter((t) => t.lane === "blocked");
         if (blockedTasks.length > 0) {
@@ -652,78 +715,74 @@ ${a.instructions}`);
       }
       const online = s.members.filter((m) => m.state === "online");
       if (online.length > 0) {
-        parts.push(`Team: ${online.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")}`);
+        parts.push(
+          `Team: ${online.map((m) => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")}`
+        );
       }
-      if (s.instructions)
-        parts.push(s.instructions);
+      if (s.instructions) parts.push(s.instructions);
     }
     const f = this.context.fleet;
     if (f) {
-      parts.push(`
-\u2500\u2500 FLEET \u2500\u2500`);
+      parts.push("\n\u2500\u2500 FLEET \u2500\u2500");
       const total = Object.values(f.lanes || {}).reduce((a2, b) => a2 + b, 0);
       parts.push(`Board: ${total} tasks across ${Object.keys(f.lanes || {}).length} lanes`);
       if (f.urgent_unassigned?.length > 0) {
-        parts.push("\uD83D\uDD34 Urgent unassigned:");
+        parts.push("\u{1F534} Urgent unassigned:");
         for (const t of f.urgent_unassigned.slice(0, 3)) {
           parts.push(`  \u2022 [${t.task_id}] ${t.title} (${t.priority})`);
         }
       }
-      if (f.instructions)
-        parts.push(f.instructions);
+      if (f.instructions) parts.push(f.instructions);
     }
     const art = this.context.artifacts;
     if (art && (art.mine?.length || art.recent?.length)) {
-      parts.push(`
-\u2500\u2500 ARTIFACTS \u2500\u2500`);
+      parts.push("\n\u2500\u2500 ARTIFACTS \u2500\u2500");
       if (art.mine?.length) {
-        parts.push(`Your artifacts: ${art.mine.map((a2) => `${a2.name} v${a2.version} (${a2.status})`).join(", ")}`);
+        parts.push(
+          `Your artifacts: ${art.mine.map((a2) => `${a2.name} v${a2.version} (${a2.status})`).join(", ")}`
+        );
       }
       if (art.recent?.length) {
-        parts.push(`Recent fleet: ${art.recent.map((a2) => `${a2.name} by ${a2.created_by}`).join(", ")}`);
+        parts.push(
+          `Recent fleet: ${art.recent.map((a2) => `${a2.name} by ${a2.created_by}`).join(", ")}`
+        );
       }
     }
     if (this.context.rules?.instructions) {
-      parts.push(`
-\u2500\u2500 RULES \u2500\u2500`);
+      parts.push("\n\u2500\u2500 RULES \u2500\u2500");
       parts.push(this.context.rules.instructions);
     }
     const notif = this.context.notifications;
     if (notif && notif.unread_count > 0) {
       parts.push(`
-\uD83D\uDCEC ${notif.unread_count} unread notification(s)`);
+\u{1F4EC} ${notif.unread_count} unread notification(s)`);
     }
-    parts.push(`
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`);
-    let result = parts.join(`
-`);
+    parts.push("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+    let result = parts.join("\n");
     if (result.length > this.config.maxContextChars) {
-      result = result.slice(0, this.config.maxContextChars - 25) + `
-... [context truncated]`;
+      result = result.slice(0, this.config.maxContextChars - 25) + "\n... [context truncated]";
     }
     return result;
   }
-}
+};
 
 // src/dm-handler.ts
 var DEFAULT_CONFIG2 = {
-  replyTimeoutMs: 120000,
+  replyTimeoutMs: 12e4,
+  // 2 minutes
   maxPending: 20,
   autoReply: true
 };
-var SILENT_TOKENS = new Set(["NO_REPLY", "HEARTBEAT_OK", "no_reply", "heartbeat_ok"]);
-
-class DmHandler {
-  client;
-  config;
-  pending = [];
-  cleanupTimer = null;
+var SILENT_TOKENS = /* @__PURE__ */ new Set(["NO_REPLY", "HEARTBEAT_OK", "no_reply", "heartbeat_ok"]);
+var DmHandler = class {
   constructor(client, config) {
+    this.pending = [];
+    this.cleanupTimer = null;
     this.client = client;
     this.config = { ...DEFAULT_CONFIG2, ...config };
   }
   start() {
-    this.cleanupTimer = setInterval(() => this.cleanup(), 30000);
+    this.cleanupTimer = setInterval(() => this.cleanup(), 3e4);
   }
   stop() {
     if (this.cleanupTimer) {
@@ -732,8 +791,11 @@ class DmHandler {
     }
     this.pending = [];
   }
+  /** Track an incoming DM that was injected as a system event. */
   trackIncoming(from, message, eventText) {
-    const existing = this.pending.find((p) => p.fromAgentId === from.agent_id && !p.replied && Date.now() - p.injectedAt < 5000);
+    const existing = this.pending.find(
+      (p) => p.fromAgentId === from.agent_id && !p.replied && Date.now() - p.injectedAt < 5e3
+    );
     if (existing) {
       existing.message = message;
       existing.eventText = eventText;
@@ -752,25 +814,25 @@ class DmHandler {
       this.pending.shift();
     }
   }
+  /**
+   * Called from agent_end hook. Extracts the LLM's reply and sends it back.
+   * Returns true if a reply was auto-sent.
+   */
   handleAgentEnd(messages) {
-    if (!this.config.autoReply || !this.client.isConnected)
-      return false;
+    if (!this.config.autoReply || !this.client.isConnected) return false;
     const pendingDm = this.findMostRecentPending();
-    if (!pendingDm)
-      return false;
+    if (!pendingDm) return false;
     if (this.turnUsedRingforgeSend(messages)) {
       pendingDm.replied = true;
       return false;
     }
     const reply = this.extractAssistantReply(messages);
-    if (!reply)
-      return false;
+    if (!reply) return false;
     const trimmed = reply.trim();
     if (SILENT_TOKENS.has(trimmed) || trimmed.length === 0) {
       return false;
     }
-    if (trimmed.startsWith("[[reply_to"))
-      return false;
+    if (trimmed.startsWith("[[reply_to")) return false;
     this.client.sendText(pendingDm.fromAgentId, trimmed);
     pendingDm.replied = true;
     return true;
@@ -784,11 +846,11 @@ class DmHandler {
   get pendingCount() {
     return this.pending.filter((p) => !p.replied && !this.isExpired(p)).length;
   }
+  // ── Private ───────────────────────────────────────────────
   findMostRecentPending() {
-    for (let i = this.pending.length - 1;i >= 0; i--) {
+    for (let i = this.pending.length - 1; i >= 0; i--) {
       const p = this.pending[i];
-      if (!p.replied && !this.isExpired(p))
-        return p;
+      if (!p.replied && !this.isExpired(p)) return p;
     }
     return null;
   }
@@ -796,12 +858,10 @@ class DmHandler {
     return Date.now() - p.injectedAt > this.config.replyTimeoutMs;
   }
   extractAssistantReply(messages) {
-    for (let i = messages.length - 1;i >= 0; i--) {
+    for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (!msg)
-        continue;
-      if (msg.role !== "assistant")
-        continue;
+      if (!msg) continue;
+      if (msg.role !== "assistant") continue;
       if (typeof msg.content === "string" && msg.content.trim()) {
         return msg.content.trim();
       }
@@ -813,32 +873,27 @@ class DmHandler {
           if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
             textParts.push(p.text.trim());
           }
-          if (p.type === "tool_use")
-            hasToolUse = true;
+          if (p.type === "tool_use") hasToolUse = true;
         }
-        if (textParts.length > 0)
-          return textParts.join(`
-`);
-        if (hasToolUse)
-          continue;
+        if (textParts.length > 0) return textParts.join("\n");
+        if (hasToolUse) continue;
       }
-      if (msg.tool_calls && !msg.content)
-        continue;
+      if (msg.tool_calls && !msg.content) continue;
       break;
     }
     return null;
   }
   turnUsedRingforgeSend(messages) {
-    for (let i = messages.length - 1;i >= 0; i--) {
+    for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (!msg)
-        continue;
+      if (!msg) continue;
       const role = msg.role;
-      if (role !== "assistant" && role !== "tool")
-        break;
+      if (role !== "assistant" && role !== "tool") break;
       if (role === "assistant") {
         const toolCalls = msg.tool_calls;
-        if (toolCalls?.some((tc) => tc.function?.name === "ringforge_send")) {
+        if (toolCalls?.some(
+          (tc) => tc.function?.name === "ringforge_send"
+        )) {
           return true;
         }
         if (Array.isArray(msg.content)) {
@@ -853,14 +908,12 @@ class DmHandler {
   cleanup() {
     const now = Date.now();
     this.pending = this.pending.filter((p) => {
-      if (!p.replied && now - p.injectedAt < this.config.replyTimeoutMs)
-        return true;
-      if (p.replied && now - p.injectedAt < 1e4)
-        return true;
+      if (!p.replied && now - p.injectedAt < this.config.replyTimeoutMs) return true;
+      if (p.replied && now - p.injectedAt < 1e4) return true;
       return false;
     });
   }
-}
+};
 
 // src/tools.ts
 var lastRoster = [];
@@ -886,6 +939,7 @@ function text(t) {
 function createRingforgeTools(client, ctxMgr) {
   const notConnected = () => text("Not connected to Ringforge mesh.");
   return [
+    // ── Roster ──
     {
       name: "ringforge_roster",
       label: "Ringforge Roster",
@@ -896,12 +950,14 @@ function createRingforgeTools(client, ctxMgr) {
         if (lastRoster.length === 0) {
           return text("No agents in roster yet. Fleet may be empty or roster pending.");
         }
-        const lines = lastRoster.map((a) => `- ${a.name || a.agent_id} (${a.agent_id}) \u2014 ${a.state}${a.model ? ` [${a.model}]` : ""}${a.task ? `, task: ${a.task}` : ""}, caps: [${(a.capabilities || []).join(", ")}]`);
+        const lines = lastRoster.map(
+          (a) => `- ${a.name || a.agent_id} (${a.agent_id}) \u2014 ${a.state}${a.model ? ` [${a.model}]` : ""}${a.task ? `, task: ${a.task}` : ""}, caps: [${(a.capabilities || []).join(", ")}]`
+        );
         return text(`Fleet roster (${lastRoster.length} agents):
-${lines.join(`
-`)}`);
+${lines.join("\n")}`);
       }
     },
+    // ── Send DM ──
     {
       name: "ringforge_send",
       label: "Ringforge Send",
@@ -918,13 +974,11 @@ ${lines.join(`
         required: ["agent_id", "message"]
       },
       execute: async (_id, params) => {
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         let msg;
         try {
           msg = JSON.parse(params.message);
-          if (!msg.type)
-            msg.type = "text";
+          if (!msg.type) msg.type = "text";
         } catch {
           msg = { type: "text", text: params.message };
         }
@@ -932,6 +986,7 @@ ${lines.join(`
         return text(`Sent to ${params.agent_id}: ${JSON.stringify(msg).slice(0, 200)}`);
       }
     },
+    // ── Inbox ──
     {
       name: "ringforge_inbox",
       label: "Ringforge Inbox",
@@ -944,20 +999,19 @@ ${lines.join(`
       execute: async (_id, params) => {
         const limit = params.limit || 10;
         const msgs = pendingMessages.splice(0, limit);
-        if (msgs.length === 0)
-          return text("No new messages in Ringforge inbox.");
+        if (msgs.length === 0) return text("No new messages in Ringforge inbox.");
         const lines = msgs.map((m) => {
-          const age = Math.floor((Date.now() - m.ts) / 1000);
+          const age = Math.floor((Date.now() - m.ts) / 1e3);
           const body = m.message.type === "text" ? m.message.text : JSON.stringify(m.message);
           return `[${age}s ago] ${m.fromName}: ${body}`;
         });
         const more = pendingMessages.length > 0 ? `
 (${pendingMessages.length} more in queue)` : "";
         return text(`${msgs.length} message(s):
-${lines.join(`
-`)}${more}`);
+${lines.join("\n")}${more}`);
       }
     },
+    // ── Activity Broadcast ──
     {
       name: "ringforge_activity",
       label: "Ringforge Activity",
@@ -975,12 +1029,12 @@ ${lines.join(`
         required: ["kind", "description"]
       },
       execute: async (_id, params) => {
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         client.broadcastActivity(params.kind, params.description, params.tags || []);
         return text(`Activity broadcast: [${params.kind}] ${params.description}`);
       }
     },
+    // ── Presence ──
     {
       name: "ringforge_presence",
       label: "Ringforge Presence",
@@ -994,12 +1048,12 @@ ${lines.join(`
         required: ["state"]
       },
       execute: async (_id, params) => {
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         client.updatePresence({ state: params.state, task: params.task });
         return text(`Presence: ${params.state}${params.task ? ` (${params.task})` : ""}`);
       }
     },
+    // ── Memory ──
     {
       name: "ringforge_memory",
       label: "Ringforge Memory",
@@ -1014,8 +1068,7 @@ ${lines.join(`
         required: ["action", "key"]
       },
       execute: async (_id, params) => {
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         if (params.action === "set") {
           client.setMemory(params.key, params.value || "");
           return text(`Memory set: ${params.key}`);
@@ -1024,7 +1077,7 @@ ${lines.join(`
           try {
             const reply = await client.getMemoryAsync(params.key);
             const val = reply?.value ?? reply?.result ?? reply;
-            return text(`Memory[${params.key}]: ${JSON.stringify(val).slice(0, 1000)}`);
+            return text(`Memory[${params.key}]: ${JSON.stringify(val).slice(0, 1e3)}`);
           } catch (err) {
             return text(`Memory get failed: ${err instanceof Error ? err.message : String(err)}`);
           }
@@ -1032,6 +1085,7 @@ ${lines.join(`
         return text(`Unknown action: ${params.action}. Use 'set' or 'get'.`);
       }
     },
+    // ── Kanban ──
     {
       name: "ringforge_kanban",
       label: "Ringforge Kanban",
@@ -1048,8 +1102,7 @@ ${lines.join(`
         required: []
       },
       execute: async (_id, params) => {
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         try {
           const reply = await client.pushChannelAsync("context:kanban", {
             payload: { level: params.level || "agent", squad_id: params.squad_id }
@@ -1061,6 +1114,7 @@ ${lines.join(`
         }
       }
     },
+    // ── Full Context ──
     {
       name: "ringforge_context",
       label: "Ringforge Context",
@@ -1076,22 +1130,21 @@ ${lines.join(`
         if (ctxMgr) {
           await ctxMgr.refresh();
           const prompt = ctxMgr.buildPromptContext();
-          if (prompt)
-            return text(prompt);
+          if (prompt) return text(prompt);
         }
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         try {
           const reply = await client.pushChannelAsync("context:sync", {
             payload: { include: params.include || "all" }
           });
           const ctx = reply?.context || reply?.payload?.context || reply;
-          return text(JSON.stringify(ctx, null, 2).slice(0, 3000));
+          return text(JSON.stringify(ctx, null, 2).slice(0, 3e3));
         } catch (err) {
           return text(`Context sync failed: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     },
+    // ── Task Update ──
     {
       name: "ringforge_task_update",
       label: "Ringforge Task Update",
@@ -1111,8 +1164,7 @@ ${lines.join(`
         required: ["task_id", "action"]
       },
       execute: async (_id, params) => {
-        if (!client.isConnected)
-          return notConnected();
+        if (!client.isConnected) return notConnected();
         try {
           const eventMap = {
             move: "kanban:move",
@@ -1124,14 +1176,48 @@ ${lines.join(`
           if (params.action === "move" || params.action === "complete") {
             payload.lane = params.action === "complete" ? "done" : params.lane;
           }
-          if (params.progress !== undefined)
-            payload.progress = params.progress;
-          if (params.reason)
-            payload.reason = params.reason;
+          if (params.progress !== void 0) payload.progress = params.progress;
+          if (params.reason) payload.reason = params.reason;
           const reply = await client.pushChannelAsync(event, { payload });
-          return text(`Task ${params.task_id}: ${params.action} \u2192 ${JSON.stringify(reply).slice(0, 300)}`);
+          return text(
+            `Task ${params.task_id}: ${params.action} \u2192 ${JSON.stringify(reply).slice(0, 300)}`
+          );
         } catch (err) {
           return text(`Task update failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    },
+    // ── Orchestrate ──
+    {
+      name: "ringforge_orchestrate",
+      label: "Ringforge Orchestrate",
+      description: "Submit a hierarchical task that gets decomposed and distributed across agents.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "The complex task to orchestrate" },
+          verify: { type: "boolean", description: "Enable verification loop" },
+          max_retries: { type: "number", description: "Max verification retries" },
+          budget_tokens: { type: "number", description: "Token budget limit" }
+        },
+        required: ["prompt"]
+      },
+      execute: async (_id, params) => {
+        if (!client.isConnected) return notConnected();
+        try {
+          const reply = await client.pushChannelAsync("orchestration:submit", {
+            payload: {
+              request: { prompt: params.prompt, type: "orchestrated" },
+              verify: params.verify,
+              max_retries: params.max_retries,
+              budget_tokens: params.budget_tokens
+            }
+          });
+          return text(`Orchestration submitted: ${JSON.stringify(reply).slice(0, 500)}`);
+        } catch (err) {
+          return text(
+            `Orchestration failed: ${err instanceof Error ? err.message : String(err)}`
+          );
         }
       }
     }
@@ -1146,8 +1232,7 @@ function formatKanban(data) {
     if (next) {
       lines.push(`
 \u25B6 NEXT: [${next.task_id}] ${next.title} (${next.priority})`);
-      if (next.description)
-        lines.push(`  ${next.description.slice(0, 200)}`);
+      if (next.description) lines.push(`  ${next.description.slice(0, 200)}`);
     }
     if (tasks.length === 0) {
       lines.push("No tasks in your queue.");
@@ -1168,8 +1253,7 @@ ${lane.toUpperCase()} (${lt.length}):`);
   } else {
     const board = data.board || {};
     const stats = data.stats;
-    if (stats && Object.keys(stats).length)
-      lines.push(`Stats: ${JSON.stringify(stats)}`);
+    if (stats && Object.keys(stats).length) lines.push(`Stats: ${JSON.stringify(stats)}`);
     for (const [lane, ld] of Object.entries(board)) {
       const count = ld?.count || 0;
       const tasks = ld?.tasks || [];
@@ -1179,22 +1263,18 @@ ${lane.toUpperCase()} (${count}):`);
         const who = t.assigned_to ? ` \u2192 ${t.assigned_to}` : " [unassigned]";
         lines.push(`  \u2022 [${t.task_id}] ${t.title} \u2014 ${t.priority}${who}`);
       }
-      if (count > 5)
-        lines.push(`  ... +${count - 5} more`);
+      if (count > 5) lines.push(`  ... +${count - 5} more`);
     }
   }
-  return lines.join(`
-`);
+  return lines.join("\n");
 }
 
 // index.src.ts
 function resolveConfig(pluginConfig, agentName) {
-  if (!pluginConfig || pluginConfig.enabled === false)
-    return null;
+  if (!pluginConfig || pluginConfig.enabled === false) return null;
   const server = pluginConfig.server;
   const apiKey = pluginConfig.apiKey;
-  if (!server || !apiKey)
-    return null;
+  if (!server || !apiKey) return null;
   return {
     server,
     apiKey,
@@ -1202,24 +1282,20 @@ function resolveConfig(pluginConfig, agentName) {
     agentName: pluginConfig.agentName || agentName || `openclaw-${Math.random().toString(36).slice(2, 8)}`,
     framework: "openclaw",
     capabilities: pluginConfig.capabilities || [],
-    model: pluginConfig.model || undefined,
+    model: pluginConfig.model || void 0,
     cryptoMode: pluginConfig.cryptoMode || "sign_encrypt"
   };
 }
 function resolveModel(api) {
   try {
     const cfg = api.config;
-    if (typeof cfg.model === "string")
-      return cfg.model;
+    if (typeof cfg.model === "string") return cfg.model;
     const rt = cfg.agentRuntime;
-    if (typeof rt?.model === "string")
-      return rt.model;
+    if (typeof rt?.model === "string") return rt.model;
     const models = cfg.models;
-    if (typeof models?.default === "string")
-      return models.default;
+    if (typeof models?.default === "string") return models.default;
     const fresh = api.runtime.config.loadConfig();
-    if (typeof fresh?.model === "string")
-      return fresh.model;
+    if (typeof fresh?.model === "string") return fresh.model;
     return null;
   } catch {
     return null;
@@ -1249,7 +1325,7 @@ var ringforgePlugin = {
   id: "ringforge",
   name: "Ringforge",
   description: "Connect to a Ringforge agent mesh fleet",
-  version: "0.4.0",
+  version: "0.5.2",
   configSchema: {
     parse(value) {
       return value && typeof value === "object" ? value : {};
@@ -1287,9 +1363,14 @@ var ringforgePlugin = {
     }
     const pc = api.pluginConfig || {};
     const autoReply = pc.autoReply !== false;
-    const refreshMs = Number(pc.contextRefreshMs) || 5 * 60 * 1000;
-    const maxCtxChars = Number(pc.maxContextChars) || 4000;
+    const refreshMs = Number(pc.contextRefreshMs) || 5 * 60 * 1e3;
+    const maxCtxChars = Number(pc.maxContextChars) || 4e3;
     let lastModel = null;
+    let pendingTaskExecution = null;
+    let taskExecutionTimer = null;
+    let taskExecutionLock = false;
+    const queuedDmEvents = [];
+    const activeSessions = /* @__PURE__ */ new Map();
     const client = new RingforgeClient(config, {
       onConnected: (agentId) => {
         api.logger.info(`Ringforge: connected as ${config.agentName} (${agentId})`);
@@ -1303,9 +1384,13 @@ var ringforgePlugin = {
         api.logger.info(`Ringforge DM from ${name}: ${preview}`);
         pushIncomingMessage(from, message);
         const injection = message.injection || "immediate";
-        if (injection === "silent")
-          return;
+        if (injection === "silent") return;
         const eventText = formatDmEvent(from, message);
+        if (taskExecutionLock) {
+          queuedDmEvents.push({ from, message, eventText });
+          api.logger.info(`Ringforge: queued DM (task executing), ${queuedDmEvents.length} queued`);
+          return;
+        }
         try {
           api.runtime.system.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
           dmHandler.trackIncoming(from, message, eventText);
@@ -1322,7 +1407,51 @@ var ringforgePlugin = {
       onPresenceLeft: (id) => api.logger.info(`Ringforge: ${id} left`),
       onActivity: (a) => api.logger.info(`Ringforge: [${a.kind}] ${a.description}`),
       onCryptoKeyReceived: (kid) => api.logger.info(`Ringforge: crypto key received (${kid})`),
-      onCryptoKeyRotated: (kid) => api.logger.info(`Ringforge: crypto key rotated (${kid})`)
+      onCryptoKeyRotated: (kid) => api.logger.info(`Ringforge: crypto key rotated (${kid})`),
+      onTaskExecute: (payload) => {
+        const p = payload?.payload || payload;
+        const taskId = p?.task_id;
+        const prompt = p?.prompt;
+        const sessionId = p?.session_id;
+        const role = p?.role;
+        if (!taskId || !prompt) {
+          api.logger.warn("Ringforge: task:execute missing task_id or prompt");
+          return;
+        }
+        api.logger.info(`Ringforge: task:execute ${taskId} (session=${sessionId || "default"}, role=${role || "none"}): ${prompt.slice(0, 80)}`);
+        pendingTaskExecution = { taskId, prompt, sessionId, role };
+        taskExecutionLock = true;
+        if (taskExecutionTimer) clearTimeout(taskExecutionTimer);
+        taskExecutionTimer = setTimeout(() => {
+          if (pendingTaskExecution && pendingTaskExecution.taskId === taskId) {
+            api.logger.warn(`Ringforge: task ${taskId} timed out after 90s`);
+            client.sendTaskResult(taskId, {}, "execution_timeout");
+            pendingTaskExecution = null;
+            taskExecutionLock = false;
+            taskExecutionTimer = null;
+            drainQueuedDms();
+          }
+        }, 9e4);
+        if (sessionId) {
+          activeSessions.set(sessionId, { role: role || "general", taskId, startedAt: Date.now() });
+        }
+        const sessionKey = sessionId ? `agent:main:task:${sessionId}` : "agent:main:main";
+        const eventText = role ? `[Ringforge Task ${taskId} | Role: ${role}] ${prompt}` : `[Ringforge Task ${taskId}] ${prompt}`;
+        try {
+          api.runtime.system.enqueueSystemEvent(eventText, { sessionKey });
+        } catch (err) {
+          const fallbackText = role ? `[Ringforge Task ${taskId} | Role: ${role} | ISOLATED CONTEXT] ${prompt}` : eventText;
+          try {
+            api.runtime.system.enqueueSystemEvent(fallbackText, { sessionKey: "agent:main:main" });
+          } catch (err2) {
+            api.logger.warn(`Ringforge: task injection failed: ${err2}`);
+            client.sendTaskResult(taskId, {}, String(err2));
+          }
+        }
+      },
+      onOrchestrationStateChanged: (payload) => {
+        api.logger.info(`Ringforge: orchestration state changed: ${JSON.stringify(payload).slice(0, 200)}`);
+      }
     });
     const dmHandler = new DmHandler(client, { autoReply });
     const ctxMgr = new ContextManager(client, {
@@ -1345,13 +1474,56 @@ var ringforgePlugin = {
         }
       }
       const prompt = ctxMgr.buildPromptContext();
-      if (prompt)
-        return { prependContext: prompt };
-      return;
+      if (prompt) return { prependContext: prompt };
+      return void 0;
     });
+    function drainQueuedDms() {
+      while (queuedDmEvents.length > 0) {
+        const dm = queuedDmEvents.shift();
+        try {
+          api.runtime.system.enqueueSystemEvent(dm.eventText, { sessionKey: "agent:main:main" });
+          dmHandler.trackIncoming(dm.from, dm.message, dm.eventText);
+        } catch (err) {
+          api.logger.warn(`Ringforge: queued DM injection failed: ${err}`);
+        }
+      }
+    }
     api.on("agent_end", (event, _ctx) => {
-      if (!dmHandler.hasPending())
+      if (pendingTaskExecution) {
+        const task = pendingTaskExecution;
+        pendingTaskExecution = null;
+        if (taskExecutionTimer) {
+          clearTimeout(taskExecutionTimer);
+          taskExecutionTimer = null;
+        }
+        try {
+          const messages = event.messages || [];
+          const lastAssistant = [...messages].reverse().find(
+            (m) => m.role === "assistant" && m.content
+          );
+          if (lastAssistant) {
+            const content = typeof lastAssistant.content === "string" ? lastAssistant.content : JSON.stringify(lastAssistant.content);
+            client.sendTaskResult(task.taskId, {
+              response: content.slice(0, 1e4),
+              session_id: task.sessionId,
+              role: task.role
+            });
+            api.logger.info(`Ringforge: sent task result for ${task.taskId} (session=${task.sessionId || "default"})`);
+          } else {
+            client.sendTaskResult(task.taskId, {}, "no_assistant_response");
+          }
+        } catch (err) {
+          api.logger.warn(`Ringforge: task result error: ${err}`);
+          client.sendTaskResult(task.taskId, {}, String(err));
+        }
+        if (task.sessionId) {
+          activeSessions.delete(task.sessionId);
+        }
+        taskExecutionLock = false;
+        drainQueuedDms();
         return;
+      }
+      if (!dmHandler.hasPending()) return;
       try {
         if (dmHandler.handleAgentEnd(event.messages || [])) {
           api.logger.info("Ringforge: auto-replied to DM");
@@ -1368,13 +1540,14 @@ var ringforgePlugin = {
       name: "ringforge",
       description: "Ringforge mesh status",
       handler: () => {
-        const s = client.isConnected ? "\uD83D\uDFE2 Connected" : "\uD83D\uDD34 Disconnected";
+        const s = client.isConnected ? "\u{1F7E2} Connected" : "\u{1F534} Disconnected";
         const id = client.currentAgentId || "\u2014";
-        const up = Math.floor(client.uptimeMs / 1000);
+        const up = Math.floor(client.uptimeMs / 1e3);
         const pending = dmHandler.pendingCount;
         const ctx = ctxMgr.isStale() ? "stale" : "fresh";
         const tasks = ctxMgr.getContext()?.agent?.tasks?.count ?? "?";
-        const crypto = client.hasCrypto ? "\uD83D\uDD12 on" : "off";
+        const crypto = client.hasCrypto ? "\u{1F512} on" : "off";
+        const sessions = activeSessions.size;
         return {
           text: [
             `Ringforge: ${s}`,
@@ -1383,10 +1556,10 @@ var ringforgePlugin = {
             `Uptime: ${up}s`,
             `Auto-reply: ${autoReply ? "on" : "off"}`,
             `Pending DMs: ${pending}`,
+            `Active sessions: ${sessions}`,
             `Context: ${ctx} (${tasks} tasks)`,
             `Crypto: ${crypto}`
-          ].join(`
-`)
+          ].join("\n")
         };
       }
     });
@@ -1405,7 +1578,7 @@ var ringforgePlugin = {
               api.logger.warn(`Ringforge: context start failed: ${err}`);
             }
           }
-        }, 5000);
+        }, 5e3);
       },
       stop: () => {
         api.logger.info("Ringforge: shutting down");
@@ -1417,6 +1590,3 @@ var ringforgePlugin = {
   }
 };
 var index_src_default = ringforgePlugin;
-export {
-  index_src_default as default
-};

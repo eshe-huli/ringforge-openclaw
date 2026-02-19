@@ -1,22 +1,32 @@
 {
-  "name": "@ringforge/openclaw-plugin",
+  "name": "ringforge",
   "version": "0.5.1",
   "description": "RingForge plugin for OpenClaw — connect any AI agent to a RingForge fleet",
-  "type": "module",
   "main": "index.js",
   "openclaw": {
-    "extensions": ["./index.js"]
+    "extensions": [
+      "./index.js"
+    ]
   },
   "scripts": {
-    "build": "bun build index.src.ts --outdir dist --target bun --external openclaw/plugin-sdk && cp dist/index.src.js index.js"
+    "build": "npx esbuild index.src.ts --bundle --platform=node --target=node18 --format=cjs --outfile=index.js --external:ws"
   },
   "dependencies": {
     "ws": "^8.18.0"
   },
-  "keywords": ["openclaw", "ringforge", "agent-mesh", "multi-agent", "websocket"],
+  "keywords": [
+    "openclaw",
+    "ringforge",
+    "agent-mesh",
+    "multi-agent",
+    "websocket"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/eshe-huli/ringforge-openclaw"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3"
   }
 }
