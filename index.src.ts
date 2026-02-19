@@ -231,12 +231,16 @@ const ringforgePlugin = {
           ? `[Ringforge Task ${taskId} | Role: ${role}] ${prompt}`
           : `[Ringforge Task ${taskId}] ${prompt}`;
 
+        // Try isolated session, fall back to main with role prefix
         try {
           api.runtime.system.enqueueSystemEvent(eventText, { sessionKey });
         } catch (err) {
-          // Fallback to main session if custom session fails
+          // Fallback: inject into main session with role context
+          const fallbackText = role
+            ? `[Ringforge Task ${taskId} | Role: ${role} | ISOLATED CONTEXT] ${prompt}`
+            : eventText;
           try {
-            api.runtime.system.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
+            api.runtime.system.enqueueSystemEvent(fallbackText, { sessionKey: "agent:main:main" });
           } catch (err2) {
             api.logger.warn(`Ringforge: task injection failed: ${err2}`);
             client.sendTaskResult(taskId, {}, String(err2));
