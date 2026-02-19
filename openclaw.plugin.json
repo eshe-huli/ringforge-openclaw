@@ -2,7 +2,7 @@
   "id": "ringforge",
   "name": "RingForge",
   "description": "Connect OpenClaw agents to a RingForge agent mesh fleet",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "Ben Ouattara",
   "repository": "https://github.com/eshe-huli/ringforge-openclaw",
   "configSchema": {

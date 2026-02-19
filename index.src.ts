@@ -113,7 +113,7 @@ const ringforgePlugin = {
   id: "ringforge",
   name: "Ringforge",
   description: "Connect to a Ringforge agent mesh fleet",
-  version: "0.4.0",
+  version: "0.5.0",
 
   configSchema: {
     parse(value: unknown) {
@@ -161,7 +161,10 @@ const ringforgePlugin = {
     // ── Instantiate subsystems ──
 
     let lastModel: string | null = null;
-    let pendingTaskExecution: { taskId: string; prompt: string } | null = null;
+    let pendingTaskExecution: { taskId: string; prompt: string; sessionId?: string; role?: string } | null = null;
+    
+    // Gap 1: Parallel session tracking
+    const activeSessions = new Map<string, { role: string; taskId: string; startedAt: number }>();
 
     const client = new RingforgeClient(config, {
       onConnected: (agentId) => {
@@ -202,22 +205,42 @@ const ringforgePlugin = {
         const p = (payload as Record<string, unknown>)?.payload as Record<string, unknown> || payload;
         const taskId = p?.task_id as string;
         const prompt = p?.prompt as string;
+        const sessionId = p?.session_id as string | undefined;
+        const role = p?.role as string | undefined;
         if (!taskId || !prompt) {
           api.logger.warn("Ringforge: task:execute missing task_id or prompt");
           return;
         }
-        api.logger.info(`Ringforge: task:execute ${taskId}: ${prompt.slice(0, 80)}`);
+        api.logger.info(`Ringforge: task:execute ${taskId} (session=${sessionId || "default"}, role=${role || "none"}): ${prompt.slice(0, 80)}`);
 
         // Track this task for auto-reply via agent_end
-        pendingTaskExecution = { taskId, prompt };
+        pendingTaskExecution = { taskId, prompt, sessionId, role };
 
-        // Inject as system event
-        const eventText = `[Ringforge Task ${taskId}] ${prompt}`;
+        // Track active session for parallel execution
+        if (sessionId) {
+          activeSessions.set(sessionId, { role: role || "general", taskId, startedAt: Date.now() });
+        }
+
+        // Determine session key — use session_id if provided for isolation
+        const sessionKey = sessionId
+          ? `agent:main:task:${sessionId}`
+          : "agent:main:main";
+
+        // Build role-prefixed prompt if role specified
+        const eventText = role
+          ? `[Ringforge Task ${taskId} | Role: ${role}] ${prompt}`
+          : `[Ringforge Task ${taskId}] ${prompt}`;
+
         try {
-          api.runtime.system.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
+          api.runtime.system.enqueueSystemEvent(eventText, { sessionKey });
         } catch (err) {
-          api.logger.warn(`Ringforge: task injection failed: ${err}`);
-          client.sendTaskResult(taskId, {}, String(err));
+          // Fallback to main session if custom session fails
+          try {
+            api.runtime.system.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
+          } catch (err2) {
+            api.logger.warn(`Ringforge: task injection failed: ${err2}`);
+            client.sendTaskResult(taskId, {}, String(err2));
+          }
         }
       },
       onOrchestrationStateChanged: (payload) => {
@@ -275,12 +298,20 @@ const ringforgePlugin = {
             const content = typeof lastAssistant.content === "string"
               ? lastAssistant.content
               : JSON.stringify(lastAssistant.content);
-            client.sendTaskResult(task.taskId, { response: content.slice(0, 10000) });
-            api.logger.info(`Ringforge: sent task result for ${task.taskId}`);
+            client.sendTaskResult(task.taskId, { 
+              response: content.slice(0, 10000),
+              session_id: task.sessionId,
+              role: task.role
+            });
+            api.logger.info(`Ringforge: sent task result for ${task.taskId} (session=${task.sessionId || "default"})`);
           }
         } catch (err) {
           api.logger.warn(`Ringforge: task result error: ${err}`);
           client.sendTaskResult(task.taskId, {}, String(err));
+        }
+        // Clean up session tracking
+        if (task.sessionId) {
+          activeSessions.delete(task.sessionId);
         }
       }
 
@@ -313,6 +344,7 @@ const ringforgePlugin = {
         const ctx = ctxMgr.isStale() ? "stale" : "fresh";
         const tasks = (ctxMgr.getContext() as any)?.agent?.tasks?.count ?? "?";
         const crypto = client.hasCrypto ? "🔒 on" : "off";
+        const sessions = activeSessions.size;
         return {
           text: [
             `Ringforge: ${s}`,
@@ -321,6 +353,7 @@ const ringforgePlugin = {
             `Uptime: ${up}s`,
             `Auto-reply: ${autoReply ? "on" : "off"}`,
             `Pending DMs: ${pending}`,
+            `Active sessions: ${sessions}`,
             `Context: ${ctx} (${tasks} tasks)`,
             `Crypto: ${crypto}`,
           ].join("\n"),
