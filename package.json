@@ -1,0 +1,25 @@
+{
+  "name": "@ringforge/openclaw",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for RingForge agent mesh",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "openclaw-ringforge": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.0"
+  }
+}
